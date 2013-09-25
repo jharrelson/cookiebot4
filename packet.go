@@ -9,24 +9,33 @@ type BncsPacket struct {
 	Packet
 }
 
+type BnlsPacket struct {
+	Packet
+}
+
 type Packet struct {
-	id byte
 	position int
 	buf []byte
 }
 
-type PacketWriter interface {
-	WriteByte(c byte)
-	WriteWord(word int16)
-	WriteDword(dword int32)
-	WriteString(s string)
-	SendPacket(conn net.Conn) (err error)
+func NewBnlsPacket(data []byte) (bnls *BnlsPacket) {
+	bnls = new (BnlsPacket)
+	if data == nil {
+		bnls.buf = make([]byte, 3, 4096)
+	} else {
+		bnls.buf = append(bnls.buf, data...)
+	}
+
+	return bnls
 }
 
-func NewBncsPacket(id byte) (bncs *BncsPacket) {
+func NewBncsPacket(data []byte) (bncs *BncsPacket) {
 	bncs = new(BncsPacket)
-	bncs.id = id
-	bncs.buf = make([]byte, 4, 4096)
+	if data == nil {
+		bncs.buf = make([]byte, 4, 4096)
+	} else {
+		bncs.buf = append(bncs.buf, data...)
+	}
 
 	return bncs
 }
@@ -41,17 +50,46 @@ func (p *Packet) WriteWord(word int16) {
 		byte(word >> 8))
 }
 
-func (p *Packet) WriteDword(dword uint32) {
+func (p *Packet) WriteDword(dword int32) {
 	p.buf = append(p.buf,
 		byte(dword),
 		byte(dword >> 8),
 		byte(dword >> 16),
-		byte(dword >> 24),)
+		byte(dword >> 24))
 }
 
 func (p *Packet) WriteString(s string) {
 	p.buf = append(p.buf, s...)
 	p.buf = append(p.buf, 0)
+}
+
+func (p *Packet) ReadByte() (c byte) {
+	c = p.buf[p.position]
+	p.position++
+	return c
+}
+
+func (p *Packet) ReadWord() (word int16) {
+	word = int16(p.buf[p.position]) | int16(p.buf[p.position+1] << 8)
+	p.position += 2
+	return word
+}
+
+func (p *Packet) ReadDword() (dword int32) {
+	dword = int32(p.buf[p.position]) | int32(p.buf[p.position+1] << 8) |
+		int32(p.buf[p.position+2] << 16) | int32(p.buf[p.position+3] << 24)
+	p.position += 4
+	return dword
+}
+
+func (p *Packet) ReadString() (s string) {
+	for ; p.position < len(p.buf); p.position++ {
+		if p.buf[p.position] == 0x00 {
+			break
+		}
+		s += string(p.buf[p.position])
+	}
+	return s
 }
 
 func (p *Packet) Dump() {
@@ -92,12 +130,21 @@ func (p *Packet) Dump() {
 	}
 }
 
-func (bncs *BncsPacket) SendPacket(conn net.Conn) (err error) {
+func (bncs *BncsPacket) SendPacket(conn net.Conn, id byte) (err error) {
 	bncs.buf[0] = 0xff
-	bncs.buf[1] = bncs.id
+	bncs.buf[1] = id
 	bncs.buf[2] = byte(len(bncs.buf))
 	bncs.buf[3] = byte(len(bncs.buf) >> 8)
 
 	_, err = conn.Write(bncs.buf)
+	return err
+}
+
+func (bnls *BnlsPacket) SendPacket(conn net.Conn, id byte) (err error) {
+	bnls.buf[0] = byte(len(bnls.buf))
+	bnls.buf[1] = byte(len(bnls.buf) >> 8)
+	bnls.buf[2] = id
+
+	_, err = conn.Write(bnls.buf)
 	return err
 }

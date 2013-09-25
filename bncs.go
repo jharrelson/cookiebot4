@@ -46,7 +46,7 @@ func (s *BncsSocket) SendProtocolByte() (err error) {
 }
 
 func (s *BncsSocket) SendSid_AuthInfo() {
-	bncs := NewBncsPacket(0x50)
+	bncs := NewBncsPacket(nil)
 	bncs.WriteDword(0x00)
 	bncs.WriteDword(0x49583836)
 	bncs.WriteDword(0x53544152)
@@ -58,7 +58,7 @@ func (s *BncsSocket) SendSid_AuthInfo() {
 	bncs.WriteDword(0x00)
 	bncs.WriteString("USA")
 	bncs.WriteString("United States")
-	err := bncs.SendPacket(s.conn)
+	err := bncs.SendPacket(s.conn, 0x50)
 	if err != nil {
 		fmt.Printf(err.Error())
 		bncs.Dump()
@@ -81,6 +81,12 @@ func (s *BncsSocket) recvLoop() {
 			buf = buf[:n]
 			fmt.Printf("Read %d bytes\n", n)
 			fmt.Printf("%x\n", buf)
+
+			bncs := NewBncsPacket(buf)
+			bncs.Dump()
+			fmt.Printf("FF: %x\n", bncs.ReadByte())
+			fmt.Printf("Packet Id: %x\n", bncs.ReadByte())
+			fmt.Printf("Packet Length: %d", bncs.ReadWord())
 		}
 
 		runtime.Gosched()
