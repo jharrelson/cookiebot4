@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+//	"runtime"
 	"time"
 )
 
@@ -20,9 +21,9 @@ func (bm *BotManager) LoadBots(file []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	
+
 	for k, v := range botMap {
-		bot := NewBot(k, &v)
+		bot := NewBot(k, v)
 		bm.bots.PushBack(bot)
 	}
 
@@ -35,13 +36,15 @@ func (bm *BotManager) LoadBots(file []byte) (err error) {
 	return nil
 }
 
-func (bm *BotManager) ConnectBots() {
+func (bm *BotManager) ConnectBots(bnls *BnlsSocket) {
 	log.Println("Connecting bots...")
 	for b := bm.bots.Front(); b != nil; b = b.Next() {
 		bot := b.Value.(*Bot)
 		fmt.Println(" - Connecting", bot.ProfileName)
-		go bot.Connect()
-		time.Sleep(time.Duration(2) * time.Second)
+		fmt.Println(bot.Config)
+		bot.Connect(bnls)
+//		runtime.Gosched()
+		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
 }
 

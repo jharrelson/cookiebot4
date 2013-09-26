@@ -44,13 +44,19 @@ func (p *Packet) WriteByte(c byte) {
 	p.buf = append(p.buf, c)
 }
 
-func (p *Packet) WriteWord(word int16) {
+func (p *Packet) WriteByteArray(b []byte) {
+	for i := 0; i < len(b); i++ {
+		p.buf = append(p.buf, b[i])
+	}
+}
+
+func (p *Packet) WriteWord(word int) {
 	p.buf = append(p.buf, 
 		byte(word),
 		byte(word >> 8))
 }
 
-func (p *Packet) WriteDword(dword int32) {
+func (p *Packet) WriteDword(dword int) {
 	p.buf = append(p.buf,
 		byte(dword),
 		byte(dword >> 8),
@@ -69,15 +75,15 @@ func (p *Packet) ReadByte() (c byte) {
 	return c
 }
 
-func (p *Packet) ReadWord() (word int16) {
-	word = int16(p.buf[p.position]) | int16(p.buf[p.position+1] << 8)
+func (p *Packet) ReadWord() (word int) {
+	word = int(p.buf[p.position]) | int(p.buf[p.position+1] << 8)
 	p.position += 2
 	return word
 }
 
-func (p *Packet) ReadDword() (dword int32) {
-	dword = int32(p.buf[p.position]) | int32(p.buf[p.position+1] << 8) |
-		int32(p.buf[p.position+2] << 16) | int32(p.buf[p.position+3] << 24)
+func (p *Packet) ReadDword() (dword int) {
+	dword = int(p.buf[p.position]) | int(p.buf[p.position+1]) << 8 | 
+		int(p.buf[p.position+2]) << 16 | int(p.buf[p.position+3]) << 24
 	p.position += 4
 	return dword
 }
@@ -85,11 +91,23 @@ func (p *Packet) ReadDword() (dword int32) {
 func (p *Packet) ReadString() (s string) {
 	for ; p.position < len(p.buf); p.position++ {
 		if p.buf[p.position] == 0x00 {
+			p.position++
 			break
 		}
 		s += string(p.buf[p.position])
 	}
 	return s
+}
+
+func (p *Packet) ReadByteArray() (b []byte) {
+	b = make([]byte, 0, 256)
+	for ; p.position < len(p.buf); p.position++ {
+		b = append(b, p.buf[p.position])
+		if p.buf[p.position] == 0x00 {
+			break
+		}
+	}
+	return b
 }
 
 func (p *Packet) Dump() {
@@ -137,6 +155,7 @@ func (bncs *BncsPacket) SendPacket(conn net.Conn, id byte) (err error) {
 	bncs.buf[3] = byte(len(bncs.buf) >> 8)
 
 	_, err = conn.Write(bncs.buf)
+//	bncs.Dump()
 	return err
 }
 
@@ -146,5 +165,6 @@ func (bnls *BnlsPacket) SendPacket(conn net.Conn, id byte) (err error) {
 	bnls.buf[2] = id
 
 	_, err = conn.Write(bnls.buf)
+//	bnls.Dump()
 	return err
 }

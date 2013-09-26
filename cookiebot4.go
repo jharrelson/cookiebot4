@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
 )
 
 func main() {
+//	runtime.GOMAXPROCS(3)
+
 	fmt.Println("   ____            _    _      ____        _   ")
 	fmt.Println("  / ___|___   ___ | | _(_) ___| __ )  ___ | |_ ")
 	fmt.Println(" | |   / _ \\ / _ \\| |/ / |/ _ \\  _ \\ / _ \\| __|")
@@ -36,9 +39,10 @@ func main() {
 		log.Printf("[bnls] Successfully connected to %s\n", bnls.Server)
 	}
 
-	botManager.ConnectBots()
+	botManager.ConnectBots(bnls)
 
 	for {
+		runtime.Gosched()
 	}
 
 } 
