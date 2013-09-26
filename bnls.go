@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"runtime"
 	"sync"
@@ -55,7 +56,6 @@ func (s *BnlsSocket) SendBnls_Cdkey(bot *Bot, serverToken int, cdkey string) {
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
-//	bnls.Dump()
 }
 
 func (s *BnlsSocket) handleBnls_Cdkey(bnls *BnlsPacket) {
@@ -88,7 +88,6 @@ func (s *BnlsSocket) SendBnls_VersionCheckEx2(bot *Bot, clientToken int, mpqFile
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
-//	bnls.Dump()
 }
 
 func (s *BnlsSocket) handleBnls_VersionCheckEx2(bnls *BnlsPacket) {
@@ -102,23 +101,38 @@ func (s *BnlsSocket) handleBnls_VersionCheckEx2(bnls *BnlsPacket) {
 	s.mutex.Unlock()
 }
 
+func (s *BnlsSocket) SendBnls_HashData(bot *Bot) {
+	s.mutex.Lock()
+	s.bot = bot
+	bnls := NewBnlsPacket(nil)
+	bnls.WriteDword(len(s.bot.Config.Password))
+	bnls.WriteDword(0x02)
+	bnls.WriteByteArray([]byte(s.bot.Config.Password))
+	bnls.WriteDword(s.bot.CdkeyData.ClientToken)
+	bnls.WriteDword(s.bot.CdkeyData.ServerToken)
+	bnls.SendPacket(s.conn, 0x0b)
+}
+
+func (s *BnlsSocket) handleBnls_HashData(bnls *BnlsPacket) {
+	s.bot.PasswordHash = make([]int, 5)
+	for i := 0; i < 5; i++ {
+		s.bot.PasswordHash[i] = bnls.ReadDword()
+	}
+}
+
 func (s *BnlsSocket) recvLoop() {
 	for {
 		buf := make([]byte, 4096)
 		n, err := s.conn.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Printf("BnlsSocket read problem : %s, err")
+				log.Printf("[bnls] BnlsSocket read problem : %s, err")
 				break
 			}
 		}
 		if n > 4 {
 			buf = buf[:n]
-			fmt.Printf("BNLS: Read %d bytes\n", n)
-//			fmt.Printf("%x\n", buf)
-
 			bnls := NewBnlsPacket(buf)
-//			bnls.Dump()
 			bnls.ReadWord() // Packet length
 			packetId := bnls.ReadByte()
 			s.handlePacket(packetId, bnls)
@@ -131,12 +145,16 @@ func (s *BnlsSocket) recvLoop() {
 func (s *BnlsSocket) handlePacket(id byte, bnls *BnlsPacket) {
 	switch id {
 	case 0x01:
-		fmt.Printf("BNLS: Received BNLS_CDKEY\n")
+		//fmt.Printf("BNLS: Received BNLS_CDKEY\n")
 		s.handleBnls_Cdkey(bnls)
+	case 0x0b:
+		//fmt.Printf("BNLS: Received BNLS_HASHDATA\n")
+		s.handleBnls_HashData(bnls)
 	case 0x1a:
-		fmt.Printf("BNLS: Received BNLS_VERSIONCHECKEX2\n")
+		//fmt.Printf("BNLS: Received BNLS_VERSIONCHECKEX2\n")
 		s.handleBnls_VersionCheckEx2(bnls)
 	default:
-		fmt.Printf("BNLS: Received unknown packet\n")
+		fmt.Printf("[bnls] Received unknown packet\n")
+		bnls.Dump()
 	}
 }

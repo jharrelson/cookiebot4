@@ -40,10 +40,9 @@ func (bm *BotManager) ConnectBots(bnls *BnlsSocket) {
 	log.Println("Connecting bots...")
 	for b := bm.bots.Front(); b != nil; b = b.Next() {
 		bot := b.Value.(*Bot)
-		fmt.Println(" - Connecting", bot.ProfileName)
-		fmt.Println(bot.Config)
+		log.Println(" - Connecting", bot.ProfileName)
 		bot.Connect(bnls)
-//		runtime.Gosched()
+
 		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
 }

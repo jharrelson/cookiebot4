@@ -18,6 +18,7 @@ type Bot struct {
 
 	CdkeyData *CdkeyData
 	ExeInfo *ExeInfo
+	PasswordHash []int
 
 	Bncs *BncsSocket
 	Bnls *BnlsSocket
@@ -25,6 +26,7 @@ type Bot struct {
 
 type CdkeyData struct {
 	ClientToken int
+	ServerToken int
 	KeyLength int
 	ProductValue int
 	PublicValue int
@@ -57,14 +59,14 @@ func (b *Bot) Connect(bnls *BnlsSocket) bool {
 		return false
 	}
 
-	log.Printf("[bncs] %s successfully connected to %s", b.ProfileName, b.Bncs.Server)
-	log.Printf("[bncs] (%s) sending protocol byte (0x01)", b.ProfileName)
+	log.Printf("[%s] Successfully connected to %s", b.ProfileName, b.Bncs.Server)
+	log.Printf("[%s] Sending protocol byte (0x01)", b.ProfileName)
 	err = b.Bncs.SendProtocolByte()
 	if err != nil {
-		log.Printf("[bncs] (%s) failed to send protocol byte [%s]", b.ProfileName, err.Error())
+		log.Printf("[%s] Failed to send protocol byte [%s]", b.ProfileName, err.Error())
 		return false
 	}
-	b.Bncs.SendSid_AuthInfo()
+	b.Bncs.SendSid_Auth_Info()
 	
 	return true
 }

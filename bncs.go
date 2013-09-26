@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 //	"bytes"
 //	"encoding/binary"
 	"net"
@@ -47,7 +48,7 @@ func (s *BncsSocket) SendProtocolByte() (err error) {
 	return err
 }
 
-func (s *BncsSocket) SendSid_AuthInfo() {
+func (s *BncsSocket) SendSid_Auth_Info() {
 	bncs := NewBncsPacket(nil)
 	bncs.WriteDword(0x00)
 	bncs.WriteDword(0x49583836)
@@ -64,7 +65,6 @@ func (s *BncsSocket) SendSid_AuthInfo() {
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
-	//bncs.Dump()
 
 	go s.recvLoop()
 }
@@ -85,14 +85,32 @@ func (s *BncsSocket) SendSid_Auth_Check() {
 	}
 	bncs.WriteByteArray(s.Bot.ExeInfo.StatString)
 	bncs.WriteString("CookieBot4")
-	fmt.Printf("  >> Sending SID_AUTH_CHECK [%s]\n", s.Bot.ProfileName)
 	err := bncs.SendPacket(s.conn, 0x51)
 	if err != nil {
 		fmt.Printf(err.Error())
 	}
 }
 
-func (s *BncsSocket) handleSid_AuthInfo(bncs *BncsPacket) {
+func (s *BncsSocket) SendSid_LogonResponse2() {
+	bncs := NewBncsPacket(nil)
+	s.Bot.Bnls.SendBnls_HashData(s.Bot)
+	for s.Bot.PasswordHash == nil {
+		runtime.Gosched()
+	}
+
+	bncs.WriteDword(s.Bot.CdkeyData.ClientToken)
+	bncs.WriteDword(s.Bot.CdkeyData.ServerToken)
+	for i := 0; i < 5; i++ {
+		bncs.WriteDword(s.Bot.PasswordHash[i])
+	}
+	bncs.WriteString(s.Bot.Config.Username)
+	err := bncs.SendPacket(s.conn, 0x3a)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
+}
+
+func (s *BncsSocket) handleSid_Auth_Info(bncs *BncsPacket) {
 	logonType := bncs.ReadDword()
 	serverToken := bncs.ReadDword()
 	bncs.ReadDword() // Udp value
@@ -104,75 +122,96 @@ func (s *BncsSocket) handleSid_AuthInfo(bncs *BncsPacket) {
 
 	switch logonType {
 	case 0x00:
-		fmt.Printf("Logon type: Broken Sha-1\n")
+		log.Printf("[%s] Logon type: Broken Sha-1\n", s.Bot.ProfileName)
 	case 0x01:
-		fmt.Printf("Logon type: Nls version 1\n")
+		log.Printf("[%s] Logon type: Nls version 1\n", s.Bot.ProfileName)
 	case 0x02:
-		fmt.Printf("Logon type: Nls version 2\n")
+		log.Printf("[%s] Logon type: Nls version 2\n", s.Bot.ProfileName)
 	default:
-		fmt.Printf("Logon type: unknown [0x%x]\n", logonType)
+		log.Printf("[%s] Logon type: unknown [0x%x]\n", s.Bot.ProfileName, logonType)
 	}
 
 	s.Bot.Bnls.SendBnls_Cdkey(s.Bot, serverToken, s.Bot.Config.Cdkey)
 	for s.Bot.CdkeyData == nil {
 		runtime.Gosched()
 	}
-//	fmt.Println("Got cdkey data")
+	s.Bot.CdkeyData.ServerToken = serverToken
+
 	s.Bot.Bnls.SendBnls_VersionCheckEx2(s.Bot, s.Bot.CdkeyData.ClientToken, mpqFiletime, mpqFilename, valueString)
 	for s.Bot.ExeInfo == nil {
 		runtime.Gosched()
 	}
-//	fmt.Println("Got exe info")
 
 	s.SendSid_Auth_Check()
 }
 
 func (s *BncsSocket) handleSid_Auth_Check(bncs *BncsPacket) {
 	result := bncs.ReadDword()
-	fmt.Printf("\n@@@@@@@@@@@@@@@@@@@@@ %s\n", s.Bot.ProfileName)
 	switch result {
 	case 0x000:
-		fmt.Printf("Passed challenge\n")
+		log.Printf("[%s] Passed authentication challenge\n", s.Bot.ProfileName)
+		s.SendSid_LogonResponse2()
 	case 0x100:
-		fmt.Printf("Old game version\n")
+		log.Printf("[%s] Old game version\n", s.Bot.ProfileName)
 	case 0x101:
-		fmt.Printf("Invalid game version\n")
+		log.Printf("[%s] Invalid game version\n", s.Bot.ProfileName)
 	case 0x102:
-		fmt.Printf("Game version must be downgraded\n")
+		log.Printf("[%s] Game version must be downgraded\n", s.Bot.ProfileName)
 	case 0x200:
-		fmt.Printf("Invalid cdkey\n")
+		log.Printf("[%s] Invalid cdkey\n", s.Bot.ProfileName)
 	case 0x201:
-		fmt.Printf("Cdkey in use\n")
+		log.Printf("[%s] Cdkey in use\n", s.Bot.ProfileName)
 	case 0x202:
-		fmt.Printf("Banned cdkey\n")
+		log.Printf("[%s] Banned cdkey\n", s.Bot.ProfileName)
 	case 0x203:
-		fmt.Printf("Cdkey for wrong product\n")
+		log.Printf("[%s] Cdkey for wrong product\n", s.Bot.ProfileName)
+	}
+}
+
+func (s *BncsSocket) handleSid_LogonResponse2(bncs *BncsPacket) {
+	result := bncs.ReadDword()
+	switch result {
+	case 0x00:
+		log.Printf("[%s] Account login successful!\n", s.Bot.ProfileName)
+	case 0x01:
+		log.Printf("[%s] Account does not exist\n", s.Bot.ProfileName)
+	case 0x02:
+		log.Printf("[%s] Invalid password\n", s.Bot.ProfileName)
+	case 0x06:
+		log.Printf("[%s] Account closed\n", s.Bot.ProfileName)
+	default:
+		log.Printf("Unknown logon response\n")
 	}
 }
 
 func (s *BncsSocket) recvLoop() {
 	for {
-		fmt.Println(s.Bot.ProfileName)
 		buf := make([]byte, 4096)
 		n, err := s.conn.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Printf("BncsSocket read problem : %s", err)
+				log.Printf("[%s] BncsSocket read problem : %s", s.Bot.ProfileName, err)
 				break
 			}
 		}
-		if n > 4 {
-			buf = buf[:n]
-			fmt.Printf("Read %d bytes\n", n)
-//			fmt.Printf("%x\n", buf)
 
-			bncs := NewBncsPacket(buf)
-//			bncs.Dump()
-			bncs.ReadByte() // FF
-			packetId := bncs.ReadByte()
-			bncs.ReadWord() // Packet Length
-//			packetLength := bncs.ReadWord()
+		pos := n
+		for pos > 4 {
+			packetId := buf[1]
+			packetLength := int(buf[2]) | int(buf[3]) << 8
+			bncs := NewBncsPacket(buf[:packetLength])
+			for len(buf) < packetLength {
+				tmp := make([]byte, 4096)
+				buf = append(buf, tmp...)
+			}
+			bncs.ReadByte()
+			bncs.ReadByte()
+			bncs.ReadWord()
+
 			s.handlePacket(packetId, bncs)
+
+			pos -= packetLength
+			buf = buf[packetLength:]
 		}
 
 		runtime.Gosched()
@@ -182,14 +221,18 @@ func (s *BncsSocket) recvLoop() {
 func (s *BncsSocket) handlePacket(id byte, bncs *BncsPacket) {
 	switch id {
 	case 0x25:
-		fmt.Printf("   >> Received SID_PING [%s]\n", s.Bot.ProfileName)
+//		fmt.Printf("   >> Received SID_PING [%s]\n", s.Bot.ProfileName)
+	case 0x3a:
+//		fmt.Printf("   >> Received SID_LOGONRESPONSE2 [%s]\n", s.Bot.ProfileName)
+		s.handleSid_LogonResponse2(bncs)
 	case 0x50:
-		fmt.Printf("   >> Received SID_AUTHINFO [%s]\n", s.Bot.ProfileName)
-		s.handleSid_AuthInfo(bncs)
+//		fmt.Printf("   >> Received SID_AUTHINFO [%s]\n", s.Bot.ProfileName)
+		s.handleSid_Auth_Info(bncs)
 	case 0x51:
-		fmt.Printf("   >> Received SID_AUTH_CHECK [%s]\n", s.Bot.ProfileName)
+//		fmt.Printf("   >> Received SID_AUTH_CHECK [%s]\n", s.Bot.ProfileName)
 		s.handleSid_Auth_Check(bncs)
 	default:
-		fmt.Printf("   >> Received unknown packet!")
+		log.Printf("[%s]  >> Received unknown packet!\n", s.Bot.ProfileName)
+		bncs.Dump()
 	}
 }
