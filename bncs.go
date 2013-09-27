@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-//	"bytes"
-//	"encoding/binary"
 	"net"
 	"runtime"
 	"time"
@@ -110,6 +108,26 @@ func (s *BncsSocket) SendSid_LogonResponse2() {
 	}
 }
 
+func (s *BncsSocket) SendSid_EnterChat() {
+	bncs := NewBncsPacket(nil)
+	bncs.WriteString(s.Bot.Config.Username)
+	bncs.WriteString("")
+	err := bncs.SendPacket(s.conn, 0x0a)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
+}
+
+func (s *BncsSocket) SendSid_JoinChannel(channel string) {
+	bncs := NewBncsPacket(nil)
+	bncs.WriteDword(0x02)
+	bncs.WriteString(channel)
+	err := bncs.SendPacket(s.conn, 0x0c)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
+}
+
 func (s *BncsSocket) handleSid_Auth_Info(bncs *BncsPacket) {
 	logonType := bncs.ReadDword()
 	serverToken := bncs.ReadDword()
@@ -173,6 +191,9 @@ func (s *BncsSocket) handleSid_LogonResponse2(bncs *BncsPacket) {
 	switch result {
 	case 0x00:
 		log.Printf("[%s] Account login successful!\n", s.Bot.ProfileName)
+		log.Printf("[%s] Entering home channel...\n", s.Bot.ProfileName)
+		s.SendSid_EnterChat()
+		s.SendSid_JoinChannel(s.Bot.Config.HomeChannel)
 	case 0x01:
 		log.Printf("[%s] Account does not exist\n", s.Bot.ProfileName)
 	case 0x02:
@@ -220,6 +241,8 @@ func (s *BncsSocket) recvLoop() {
 
 func (s *BncsSocket) handlePacket(id byte, bncs *BncsPacket) {
 	switch id {
+	case 0x0a:
+	case 0x0f:
 	case 0x25:
 //		fmt.Printf("   >> Received SID_PING [%s]\n", s.Bot.ProfileName)
 	case 0x3a:

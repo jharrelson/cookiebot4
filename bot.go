@@ -10,6 +10,7 @@ type BotConfig struct {
 	Password string
 	Cdkey string
 	Server string
+	HomeChannel string
 }
 
 type Bot struct {
@@ -52,10 +53,10 @@ func NewBot(profileName string, config BotConfig) *Bot {
 func (b *Bot) Connect(bnls *BnlsSocket) bool {
 	b.Bnls = bnls
 	b.Bncs = NewBncsSocket(b)
-	log.Printf("[bncs] %s connecting to %s...", b.ProfileName, b.Config.Server)
+	log.Printf("[%s] Connecting to %s...", b.ProfileName, b.Config.Server)
 	err := b.Bncs.Connect(b.Config.Server)
 	if err != nil {
-		log.Printf("[bncs] %s failed to connect to %s [%s]", b.ProfileName, b.Config.Server, err.Error())
+		log.Printf("[%s] Failed to connect to %s [%s]", b.ProfileName, b.Config.Server, err.Error())
 		return false
 	}
 
