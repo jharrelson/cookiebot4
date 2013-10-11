@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"runtime"
 )
 
@@ -41,10 +43,9 @@ func main() {
 
 	botManager.ConnectBots(bnls)
 
-	var a int
-	fmt.Scan(&a)
-//	for {
-//		runtime.Gosched()
-//	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
 
+	sig := <-c
+	fmt.Println("Received signal:", sig)
 } 
