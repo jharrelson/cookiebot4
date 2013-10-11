@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-//	runtime.GOMAXPROCS(3)
+	runtime.GOMAXPROCS(5)
 
 	fmt.Println("   ____            _    _      ____        _   ")
 	fmt.Println("  / ___|___   ___ | | _(_) ___| __ )  ___ | |_ ")
@@ -41,8 +41,10 @@ func main() {
 
 	botManager.ConnectBots(bnls)
 
-	for {
-		runtime.Gosched()
-	}
+	var a int
+	fmt.Scan(&a)
+//	for {
+//		runtime.Gosched()
+//	}
 
 } 

@@ -205,6 +205,32 @@ func (s *BncsSocket) handleSid_LogonResponse2(bncs *BncsPacket) {
 	}
 }
 
+func (s *BncsSocket) handleSid_ChatEvent(bncs *BncsPacket) {
+	eventId := bncs.ReadDword()
+	flags := bncs.ReadDword()
+	ping := bncs.ReadDword()
+	bncs.ReadDword() // Ip address (defunct)
+	bncs.ReadDword() // Account number (defunct)
+	bncs.ReadDword() // Registration authority (defunct)
+	username := bncs.ReadString()
+	text := bncs.ReadString()
+
+	switch eventId {
+	case 0x01: // Show user
+		HandleEid_ShowUser(s.Bot, username, flags, ping, text)
+	case 0x02: // User join
+		HandleEid_UserJoin(s.Bot, username, flags, ping, text)
+	case 0x03: // User leave
+		HandleEid_UserLeave(s.Bot, username, flags, ping)
+	case 0x04: // Received whisper
+		HandleEid_RecvWhisper(s.Bot, username, flags, ping, text)
+	case 0x05: // User talk
+		HandleEid_UserTalk(s.Bot, username, flags, ping, text)
+	case 0x09: // Flags update
+		HandleEid_FlagUpdate(s.Bot, username, flags, ping, text)
+	}
+}
+
 func (s *BncsSocket) recvLoop() {
 	for {
 		buf := make([]byte, 4096)
@@ -243,6 +269,7 @@ func (s *BncsSocket) handlePacket(id byte, bncs *BncsPacket) {
 	switch id {
 	case 0x0a:
 	case 0x0f:
+		s.handleSid_ChatEvent(bncs)
 	case 0x25:
 //		fmt.Printf("   >> Received SID_PING [%s]\n", s.Bot.ProfileName)
 	case 0x3a:

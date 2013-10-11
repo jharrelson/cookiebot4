@@ -11,6 +11,8 @@ type BotConfig struct {
 	Cdkey string
 	Server string
 	HomeChannel string
+	Trigger string
+	Masters []string
 }
 
 type Bot struct {
