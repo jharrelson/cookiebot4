@@ -8,8 +8,10 @@ import (
 	"log"
 	"os"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +25,7 @@ const (
 var (
 	validSections = []DbType { DB_MASTERS, DB_GROUPS, DB_USERS }
 	
+	ErrDatabaseLoaded = errors.New("database: this database has already been loaded")
 	ErrSectionStart = errors.New("database: start of new section before ending previous section")
 	ErrInvalidDbType = errors.New("database: invalid database type specified")
 )
@@ -38,13 +41,42 @@ type DbEntry struct {
 }
 
 type Database struct {
+	sync.RWMutex
+
 	filename string
 	Masters *list.List
 	Groups *list.List
 	Users *list.List
 }
 
-var DatabaseList *list.List
+func WildcardCompare(s1 string, s2 string) bool {
+	s1 = strings.ToLower(s1)
+	s2 = strings.ToLower(s2)
+
+	s1 = createRegex(s1)
+	regex := regexp.MustCompile(s1)
+
+	return regex.MatchString(s2)
+}
+
+func createRegex(s string) string {
+	var wc string
+	for i := 0; i < len(s); i++ {
+		if s[i] == '*' {
+			wc += ".*"
+		} else if s[i] == '?' {
+			wc += "."
+		} else if s[i] >= '0' && s[i] <= '9' {
+			wc += string(s[i])
+		} else if s[i] >= 'a' && s[i] <= 'z' {
+			wc += string(s[i])
+		} else {
+			wc += "\\" + string(s[i])
+		}
+	}
+
+	return "^" + wc + "$"
+}
 
 func (db *Database)dump() {
 	l := db.Users
@@ -54,31 +86,28 @@ func (db *Database)dump() {
 	}
 }
 
-func NewDatabase(filename string) *Database {
-	// Initialize our database list if it doesn't exist
-	if DatabaseList == nil {
-		DatabaseList = list.New()
-	}
-
+func LoadDatabase(dbList *list.List, filename string) *Database {
 	// Make sure we don't load duplicate databases
-	for db := DatabaseList.Front(); db != nil; db = db.Next() {
+	for db := dbList.Front(); db != nil; db = db.Next() {
 		f := db.Value.(*Database).filename
 		if strings.ToLower(filename) == strings.ToLower(f) {
-			fmt.Println("This database is already loaded!")
-			return nil
+			return db.Value.(*Database)
 		}
 	}
+
+	log.Printf("Loading database %s...\n", filename)
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Printf(err.Error())
+		return nil
+	}
+	defer file.Close()
 
 	db := new(Database)
 	db.filename = filename
 	db.Masters = list.New()
 	db.Groups = list.New()
 	db.Users = list.New()
-
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Printf(err.Error())
-	}
 
 	reader := bufio.NewReader(file)
 	for err != io.EOF {
@@ -88,16 +117,18 @@ func NewDatabase(filename string) *Database {
 		line = strings.Trim(line, " \n")
 		if strings.ToLower(line) == "masters {" {
 			db.loadSection(reader, DB_MASTERS)
-			fmt.Println("Loaded", db.Masters.Len(), "masters")
+			log.Printf("  - loaded %d masters\n", db.Masters.Len())
 		} else if strings.ToLower(line) == "groups {" {
 			db.loadSection(reader, DB_GROUPS)
-			fmt.Println("Loaded", db.Groups.Len(), "groups")
+			log.Printf("  - loaded %d groups\n", db.Groups.Len())
 		} else if strings.ToLower(line) == "users {" {
 			db.loadSection(reader, DB_USERS)
-			fmt.Println("Loaded", db.Users.Len(), "users")
+			log.Printf("  - loaded %d users\n", db.Users.Len())
 		}
 
 	}
+
+	dbList.PushBack(db)
 
 	return db
 }
@@ -173,6 +204,7 @@ func (db *Database)getDbList(entryType DbType) *list.List {
 	case DB_USERS:
 		return db.Users
 	}
+	
 	return nil
 }
 
@@ -210,6 +242,9 @@ func (db *Database) FindEntry(entryType DbType, name string) *DbEntry {
 		return nil
 	}
 
+	db.RLock()
+	defer db.RUnlock()
+
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
 		if strings.ToLower(name) == strings.ToLower(entry.Name) {
@@ -220,7 +255,36 @@ func (db *Database) FindEntry(entryType DbType, name string) *DbEntry {
 	return nil
 }
 
+func (db *Database) FindEntries(entryType DbType, name string) []DbEntry {
+	l := db.getDbList(entryType)
+	if l == db.Masters || l == nil {
+		return nil
+	}
+
+	db.RLock()
+	defer db.RUnlock()
+
+	var entries []DbEntry
+
+	for e := l.Front(); e != nil; e = e.Next() {
+		entry := e.Value.(*DbEntry)
+		if WildcardCompare(name, entry.Name) {
+			if entries == nil {
+				entries = make([]DbEntry, 1)
+				entries[0] = *entry
+			} else {
+				entries = append(entries, *entry)
+			}
+		}
+	}
+
+	return entries
+}
+
 func (db *Database) RemoveEntry(entryType DbType, name string) {
+	db.Lock()
+	defer db.Unlock()
+
 	l := db.getDbList(entryType)
 	if l == db.Masters {
 		return

@@ -13,11 +13,13 @@ type BotConfig struct {
 	HomeChannel string
 	Trigger string
 	Masters []string
+	Database string
 }
 
 type Bot struct {
 	ProfileName string
 	Config BotConfig
+	Database *Database
 
 	CdkeyData *CdkeyData
 	ExeInfo *ExeInfo
@@ -42,14 +44,6 @@ type ExeInfo struct {
 	StatString []byte
 	Cookie int
 	VersionByte int
-}
-
-func NewBot(profileName string, config BotConfig) *Bot {
-	b := new(Bot)
-	b.ProfileName = profileName
-	b.Config = config
-
-	return b
 }
 
 func (b *Bot) Connect(bnls *BnlsSocket) bool {

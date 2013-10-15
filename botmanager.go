@@ -11,10 +11,12 @@ import (
 
 type BotManager struct {
 	bots *list.List
+	dbList *list.List
 }
 
 func (bm *BotManager) LoadBots(file []byte) (err error) {
 	bm.bots = list.New()
+	bm.dbList = list.New()
 
 	var botMap map[string]BotConfig
 	err = json.Unmarshal(file, &botMap)
@@ -23,7 +25,7 @@ func (bm *BotManager) LoadBots(file []byte) (err error) {
 	}
 
 	for k, v := range botMap {
-		bot := NewBot(k, v)
+		bot := bm.NewBot(k, v)
 		bm.bots.PushBack(bot)
 	}
 
@@ -34,6 +36,15 @@ func (bm *BotManager) LoadBots(file []byte) (err error) {
 	log.Printf("Successfully loaded %d bots\n", bm.BotCount())
 
 	return nil
+}
+
+func (bm *BotManager) NewBot(profileName string, config BotConfig) *Bot {
+        b := new(Bot)
+        b.ProfileName = profileName
+        b.Config = config
+	b.Database = LoadDatabase(bm.dbList, b.Config.Database)
+
+        return b
 }
 
 func (bm *BotManager) ConnectBots(bnls *BnlsSocket) {
