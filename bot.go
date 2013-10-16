@@ -46,24 +46,26 @@ type ExeInfo struct {
 	VersionByte int
 }
 
-func (b *Bot) Connect(bnls *BnlsSocket) bool {
-	b.Bnls = bnls
-	b.Bncs = NewBncsSocket(b)
-	log.Printf("[%s] Connecting to %s...", b.ProfileName, b.Config.Server)
-	err := b.Bncs.Connect(b.Config.Server)
+func (bot *Bot) Connect(bnls *BnlsSocket) bool {
+	bot.Bnls = bnls
+	bot.Bncs = NewBncsSocket()
+
+	log.Printf("[%s] Connecting to %s...", bot.ProfileName, bot.Config.Server)
+	err := bot.Bncs.Connect(bot.Config.Server)
 	if err != nil {
-		log.Printf("[%s] Failed to connect to %s [%s]", b.ProfileName, b.Config.Server, err.Error())
+		log.Printf("[%s] Failed to connect to %s [%s]", 
+			bot.ProfileName, bot.Config.Server, err.Error())
 		return false
 	}
 
-	log.Printf("[%s] Successfully connected to %s", b.ProfileName, b.Bncs.Server)
-	log.Printf("[%s] Sending protocol byte (0x01)", b.ProfileName)
-	err = b.Bncs.SendProtocolByte()
+	log.Printf("[%s] Successfully connected to %s", bot.ProfileName, bot.Bncs.Server)
+	log.Printf("[%s] Sending protocol byte (0x01)", bot.ProfileName)
+	err = SendProtocolByte(bot)
 	if err != nil {
-		log.Printf("[%s] Failed to send protocol byte [%s]", b.ProfileName, err.Error())
+		log.Printf("[%s] Failed to send protocol byte [%s]", bot.ProfileName, err.Error())
 		return false
 	}
-	b.Bncs.SendSid_Auth_Info()
+	SendSid_Auth_Info(bot)
 	
 	return true
 }

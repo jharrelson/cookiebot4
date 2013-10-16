@@ -39,12 +39,12 @@ func (bm *BotManager) LoadBots(file []byte) (err error) {
 }
 
 func (bm *BotManager) NewBot(profileName string, config BotConfig) *Bot {
-        b := new(Bot)
-        b.ProfileName = profileName
-        b.Config = config
-	b.Database = LoadDatabase(bm.dbList, b.Config.Database)
+        bot := new(Bot)
+        bot.ProfileName = profileName
+        bot.Config = config
+	bot.Database = LoadDatabase(bm.dbList, bot.Config.Database)
 
-        return b
+        return bot
 }
 
 func (bm *BotManager) ConnectBots(bnls *BnlsSocket) {
