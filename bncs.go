@@ -228,6 +228,8 @@ func handleSid_ChatEvent(bot *Bot, bncs *BncsPacket) {
 		HandleEid_RecvWhisper(bot, username, flags, ping, text)
 	case 0x05: // User talk
 		HandleEid_UserTalk(bot, username, flags, ping, text)
+	case 0x07: // Channel information
+		HandleEid_Channel(bot, text, flags)
 	case 0x09: // Flags update
 		HandleEid_FlagUpdate(bot, username, flags, ping, text)
 	}

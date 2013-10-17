@@ -20,6 +20,7 @@ type Bot struct {
 	ProfileName string
 	Config BotConfig
 	Database *Database
+	UserList *UserList
 
 	CdkeyData *CdkeyData
 	ExeInfo *ExeInfo

@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"io"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,36 +48,7 @@ type Database struct {
 	Users *list.List
 }
 
-func WildcardCompare(s1 string, s2 string) bool {
-	s1 = strings.ToLower(s1)
-	s2 = strings.ToLower(s2)
-
-	s1 = createRegex(s1)
-	regex := regexp.MustCompile(s1)
-
-	return regex.MatchString(s2)
-}
-
-func createRegex(s string) string {
-	var wc string
-	for i := 0; i < len(s); i++ {
-		if s[i] == '*' {
-			wc += ".*"
-		} else if s[i] == '?' {
-			wc += "."
-		} else if s[i] >= '0' && s[i] <= '9' {
-			wc += string(s[i])
-		} else if s[i] >= 'a' && s[i] <= 'z' {
-			wc += string(s[i])
-		} else {
-			wc += "\\" + string(s[i])
-		}
-	}
-
-	return "^" + wc + "$"
-}
-
-func (db *Database)dump() {
+func (db *Database) dump() {
 	l := db.Users
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
@@ -178,11 +148,11 @@ func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 				e.Comments = splitLine[6]
 			
 				if section == DB_GROUPS {
-					if db.FindEntry(DB_GROUPS, e.Name) == nil {
+					if db.EntryExists(DB_GROUPS, e.Name) == false {
 						db.Groups.PushBack(e)
 					}
 				} else if section == DB_USERS {
-					if db.FindEntry(DB_USERS, e.Name) == nil {
+					if db.EntryExists(DB_USERS, e.Name) == false {
 						db.Users.PushBack(e)
 					}
 				}
@@ -195,7 +165,7 @@ func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 	return nil
 }
 
-func (db *Database)getDbList(entryType DbType) *list.List {
+func (db *Database) getDbList(entryType DbType) *list.List {
 	switch (entryType) {
 	case DB_MASTERS:
 		return db.Masters
@@ -208,80 +178,86 @@ func (db *Database)getDbList(entryType DbType) *list.List {
 	return nil
 }
 
-func (db *Database) UserHasFlag(user string, flag byte) bool {
-	// Does the user exist in the database?
-	u := db.FindEntry(DB_USERS, user)
-	if u == nil {
+func (db *Database) UserHasFlag(username string, flag byte) bool {
+	var user *DbEntry
+
+	for u := db.Users.Front(); u != nil; u = u.Next() {
+		user = u.Value.(*DbEntry)
+		if strings.ToLower(username) == strings.ToLower(user.Name) {
+			if strings.HasPrefix(user.Access, "%") {
+				break
+			} else {
+				if strings.Contains(user.Access, string(flag)) {
+					return true
+				} else {
+					return false
+				}
+			}
+		}
+	}
+
+	if user == nil {
 		return false
 	}
-	
-	// Check to see if the user is in a group
-	if strings.HasPrefix(u.Access, "%") {
-		g := db.FindEntry(DB_GROUPS, u.Access)
-		if g == nil {
-			return false
-		}
-	
-		// Does the group have the specified flag?
-		if strings.Contains(g.Access, string(flag)) {
-			return true
-		}
-	} else {
-		// Does the user have the specified flag?
-		if strings.Contains(u.Access, string(flag)) {
-			return true
+
+	if user != nil {
+		for g := db.Groups.Front(); g != nil; g = g.Next() {
+			group := g.Value.(*DbEntry)
+			if strings.ToLower(group.Name) == strings.ToLower(user.Access) {
+				if strings.Contains(group.Access, string(flag)) {
+					return true
+				} else {
+					return false
+				}
+			}
 		}
 	}
 
 	return false
 }
 
-func (db *Database) FindEntry(entryType DbType, name string) *DbEntry {
+func (db *Database) EntryExists(entryType DbType, name string) bool {
+	db.RLock()
+	defer db.RUnlock()
+
+	l := db.getDbList(entryType)
+	
+	for e := l.Front(); e != nil; e = e.Next() {
+		if l == db.Masters {
+			fmt.Println(e)
+		} else {
+			entry := e.Value.(*DbEntry)
+			if strings.ToLower(name) == strings.ToLower(entry.Name) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (db *Database) FindEntries(entryType DbType, pattern string) []*DbEntry {
+	db.RLock()
+	defer db.RUnlock()
+
 	l := db.getDbList(entryType)
 	if l == db.Masters {
 		return nil
 	}
 
-	db.RLock()
-	defer db.RUnlock()
+	var entries []*DbEntry
 
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
-		if strings.ToLower(name) == strings.ToLower(entry.Name) {
-			return entry
-		}
-	}
-
-	return nil
-}
-
-func (db *Database) FindEntries(entryType DbType, name string) []DbEntry {
-	l := db.getDbList(entryType)
-	if l == db.Masters || l == nil {
-		return nil
-	}
-
-	db.RLock()
-	defer db.RUnlock()
-
-	var entries []DbEntry
-
-	for e := l.Front(); e != nil; e = e.Next() {
-		entry := e.Value.(*DbEntry)
-		if WildcardCompare(name, entry.Name) {
-			if entries == nil {
-				entries = make([]DbEntry, 1)
-				entries[0] = *entry
-			} else {
-				entries = append(entries, *entry)
-			}
+		if WildcardCompare(pattern, entry.Name) {
+			entries = append(entries, entry)
 		}
 	}
 
 	return entries
 }
 
-func (db *Database) RemoveEntry(entryType DbType, name string) {
+func (db *Database) RemoveEntries(entryType DbType, pattern string) {
 	db.Lock()
 	defer db.Unlock()
 
@@ -292,9 +268,8 @@ func (db *Database) RemoveEntry(entryType DbType, name string) {
 
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
-		if strings.ToLower(name) == strings.ToLower(entry.Name) {
+		if WildcardCompare(pattern, entry.Name) {
 			l.Remove(e)
-			return
 		}
 	}
 }
