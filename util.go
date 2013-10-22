@@ -5,14 +5,14 @@ import (
 	"regexp"
 )
 
-func WildcardCompare(s1 string, s2 string) bool {
-        s1 = strings.ToLower(s1)
-        s2 = strings.ToLower(s2)
+func WildcardCompare(s string, pattern string) bool {
+        s = strings.ToLower(s)
+        pattern = strings.ToLower(pattern)
 
-        s1 = createRegex(s1)
-        regex := regexp.MustCompile(s1)
+        pattern = createRegex(pattern)
+        regex := regexp.MustCompile(pattern)
 
-        return regex.MatchString(s2)
+        return regex.MatchString(s)
 }
 
 func createRegex(s string) string {

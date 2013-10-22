@@ -31,12 +31,12 @@ var (
 
 type DbEntry struct {
 	Name string
-	Access string
+	Access interface{}
 	CreatedBy string
 	CreatedDate time.Time
 	ModifiedBy string
 	ModifiedDate time.Time
-	Comments string
+	Comment string
 }
 
 type Database struct {
@@ -50,9 +50,10 @@ type Database struct {
 
 func (db *Database) dump() {
 	l := db.Users
+
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
-		fmt.Printf("%s %s %s\n", entry.Name, entry.Access, entry.CreatedDate.Format(time.RFC1123))
+		fmt.Println(entry)
 	}
 }
 
@@ -115,6 +116,7 @@ func lineIsSection(line string) bool {
 
 func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 	line, err := reader.ReadString('\n')
+
 	for err != io.EOF {
 		line = strings.Trim(line, " \t\n")
 		
@@ -128,7 +130,7 @@ func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 		if line != "" {
 			if section == DB_MASTERS {
 				db.Masters.PushBack(line)
-			} else if section == DB_GROUPS || section == DB_USERS {
+			} else if section == DB_USERS {
 				splitLine := strings.Split(line, "\\")
 				if len(splitLine) < 6 {
 					// dbentry format is incorrect, skip it
@@ -136,26 +138,28 @@ func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 					continue
 				}
 
-				e := new(DbEntry)
-				e.Name = splitLine[0]
-				e.Access = splitLine[1]
-				e.CreatedBy = splitLine[2]
-				unixTime, _ := strconv.ParseInt(splitLine[3], 10, 64)
-				e.CreatedDate = time.Unix(unixTime, 0)
-				e.ModifiedBy = splitLine[4]
-				unixTime, _ = strconv.ParseInt(splitLine[5], 10, 64)
-				e.ModifiedDate = time.Unix(unixTime, 0)
-				e.Comments = splitLine[6]
-			
-				if section == DB_GROUPS {
-					if db.EntryExists(DB_GROUPS, e.Name) == false {
-						db.Groups.PushBack(e)
-					}
-				} else if section == DB_USERS {
-					if db.EntryExists(DB_USERS, e.Name) == false {
-						db.Users.PushBack(e)
-					}
+				if (strings.HasPrefix(splitLine[0], "%")) {
+					// This is a group -- wrong section!!
+					line, err = reader.ReadString('\n')
+					continue
 				}
+				
+				db.AddEntry(splitLine[0], splitLine[1], splitLine[2], splitLine[3], splitLine[4], splitLine[5], splitLine[6])
+			} else if section == DB_GROUPS {
+				splitLine := strings.Split(line, "\\")
+                                if len(splitLine) < 6 {
+                                        // dbentry format is incorrect, skip it
+                                        line, err = reader.ReadString('\n')
+                                        continue
+                                }
+
+                                if (!strings.HasPrefix(splitLine[0], "%")) {
+                                        // Groups must have prefix '%' -- invalid group!
+					line, err = reader.ReadString('\n')
+					continue
+                                }
+
+				db.AddEntry(splitLine[0], splitLine[1], splitLine[2], splitLine[3], splitLine[4], splitLine[5], splitLine[6])
 			}
 		}
 
@@ -165,50 +169,105 @@ func (db *Database) loadSection(reader *bufio.Reader, section DbType) error {
 	return nil
 }
 
-func (db *Database) getDbList(entryType DbType) *list.List {
-	switch (entryType) {
-	case DB_MASTERS:
-		return db.Masters
-	case DB_GROUPS:
-		return db.Groups
-	case DB_USERS:
-		return db.Users
+func FlagsToInt(flags string) uint32 {
+	var f uint32
+	flags = strings.ToUpper(flags)
+
+	for _, c := range flags {
+		f |= 1 << uint32(25 - ('Z' - c))
 	}
-	
-	return nil
+
+	return f
 }
 
-func (db *Database) UserHasFlag(username string, flag byte) bool {
-	var user *DbEntry
+func IntToFlags(flags uint32) string {
+	var f string
 
-	for u := db.Users.Front(); u != nil; u = u.Next() {
-		user = u.Value.(*DbEntry)
-		if strings.ToLower(username) == strings.ToLower(user.Name) {
-			if strings.HasPrefix(user.Access, "%") {
+	f = ""
+	for i := 0; i < 26; i++ {
+		var testflag uint32 = 1 << uint32(25 - ('Z' - ('A' + i)))
+		if (flags & testflag == testflag) {
+			f += string('Z' - ('Z' - ('A' + i)))
+		}
+	}
+
+	return f
+}
+
+func (db *Database) EntryHasAny(name, flags string) bool {
+	var entry *DbEntry
+
+	if (strings.HasPrefix(name, "%")) {
+		if (strings.ContainsAny(name, "*?")) {
+			// Group names cannot contain wildcards
+			return false
+		}
+	}
+
+	entries := db.FindEntries(name)
+	if (entries == nil) {
+		return false
+	} else {
+		for _, e := range entries {
+			if (strings.ToLower(e.Name) == strings.ToLower(name)) {
+				entry = e
 				break
-			} else {
-				if strings.Contains(user.Access, string(flag)) {
-					return true
-				} else {
-					return false
-				}
 			}
 		}
 	}
 
-	if user == nil {
+	if (entry == nil) {
 		return false
 	}
 
-	if user != nil {
-		for g := db.Groups.Front(); g != nil; g = g.Next() {
-			group := g.Value.(*DbEntry)
-			if strings.ToLower(group.Name) == strings.ToLower(user.Access) {
-				if strings.Contains(group.Access, string(flag)) {
-					return true
-				} else {
-					return false
-				}
+	var access uint32
+
+	switch t := entry.Access.(type) {
+	case uint32: // Entry has flag access
+		access = entry.Access.(uint32)
+	case string: // Entry is grouped
+		if (strings.HasPrefix(name, "%")) {
+			// Groups cannot be grouped
+			return false
+		}
+
+		if (strings.ContainsAny(entry.Access.(string), "*?")) {
+			// User's group cannot have a wildcard
+			return false
+		}
+
+		entries = db.FindEntries(entry.Access.(string))
+		if (entries == nil) {
+			return false
+		}
+
+		entry = entries[0]
+		access = entry.Access.(uint32)
+	default: // wtf???
+		fmt.Println("unknown user access type: ", t)
+		return false
+	}
+
+	for _, c := range flags {
+		testflag := FlagsToInt(string(c))
+                if (access & testflag == testflag) {
+                        return true
+                }
+        }
+
+	return false
+}
+
+func (db *Database) UserIsAutobanned(username string) bool {
+	if (db.EntryHasAny(username, "S")) {
+		return false
+	}
+
+	for e := db.Users.Front(); e != nil; e = e.Next() {
+		entry := e.Value.(*DbEntry)
+		if (WildcardCompare(username, entry.Name)) {
+			if (db.EntryHasAny(entry.Name, "B")) {
+				return true
 			}
 		}
 	}
@@ -216,10 +275,11 @@ func (db *Database) UserHasFlag(username string, flag byte) bool {
 	return false
 }
 
-func (db *Database) EntryExists(entryType DbType, name string) bool {
+func (db *Database) EntryExists(name string) bool {
 	db.RLock()
 	defer db.RUnlock()
 
+/*
 	l := db.getDbList(entryType)
 	
 	for e := l.Front(); e != nil; e = e.Next() {
@@ -232,24 +292,97 @@ func (db *Database) EntryExists(entryType DbType, name string) bool {
 			}
 		}
 	}
-
+*/
 	return false
 }
 
-func (db *Database) FindEntries(entryType DbType, pattern string) []*DbEntry {
+func (db *Database) AddEntry(name, access, createdBy, createdDate, modifiedBy, modifiedDate, comment string) {
+        entry := new(DbEntry)
+
+	entryIsGroup := strings.HasPrefix(name, "%")
+
+        entry.Name = name
+	if (strings.ContainsAny(name, "*?")) {
+		if (entryIsGroup) {
+			// Group name cannot have wildcard
+			return
+		}
+	}
+
+	entries := db.FindEntries(name)
+	if (entries != nil) {
+		for _, e := range entries {
+			if (strings.ToLower(e.Name) == strings.ToLower(name)) {
+				// Entry already exists
+				return
+			}
+		}
+	}
+	
+	if (strings.HasPrefix(access, "%")) {
+		if (entryIsGroup) {
+			// Groups cannot be grouped!
+			return
+		}
+
+		if (strings.ContainsAny(access, "*?")) {
+			// Group cannot contain wildcard
+			return
+		}
+
+		if (strings.ContainsAny(name, "*?")) {
+			// Users with wildcards be grouped
+			return
+		}
+
+		entry.Access = access
+	} else {
+		if (strings.ContainsAny(name, "*?")) {
+			if (FlagsToInt(access) != 2) {
+				// Wildcarded entry cannot has more than the "B" flag
+				return
+			}
+
+			entry.Access = uint32(2)
+		} else {
+			entry.Access = FlagsToInt(access)
+		}
+	}
+
+        entry.CreatedBy = createdBy
+	unixTime, _ := strconv.ParseInt(createdDate, 10, 64)
+        entry.CreatedDate = time.Unix(unixTime, 0)
+
+	entry.ModifiedBy = modifiedBy
+        unixTime, _ = strconv.ParseInt(modifiedDate, 10, 64)
+        entry.ModifiedDate = time.Unix(unixTime, 0)
+
+        entry.Comment = comment
+
+	if entryIsGroup {
+		db.Groups.PushBack(entry)
+	} else {
+		db.Users.PushBack(entry)
+	}
+}
+
+func (db *Database) FindEntries(pattern string) []*DbEntry {
 	db.RLock()
 	defer db.RUnlock()
 
-	l := db.getDbList(entryType)
-	if l == db.Masters {
-		return nil
+	var l *list.List
+	if (strings.HasPrefix(pattern, "%")) {
+		l = db.Groups
+	} else {
+		l = db.Users
 	}
 
 	var entries []*DbEntry
 
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
-		if WildcardCompare(pattern, entry.Name) {
+
+		if WildcardCompare(entry.Name, pattern) {
 			entries = append(entries, entry)
 		}
 	}
@@ -260,16 +393,12 @@ func (db *Database) FindEntries(entryType DbType, pattern string) []*DbEntry {
 func (db *Database) RemoveEntries(entryType DbType, pattern string) {
 	db.Lock()
 	defer db.Unlock()
-
-	l := db.getDbList(entryType)
-	if l == db.Masters {
-		return
-	}
-
+/*
 	for e := l.Front(); e != nil; e = e.Next() {
 		entry := e.Value.(*DbEntry)
 		if WildcardCompare(pattern, entry.Name) {
 			l.Remove(e)
 		}
 	}
+*/
 }
