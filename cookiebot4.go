@@ -8,7 +8,7 @@ import (
 	"runtime"
 )
 
-const buildNumber = 33
+const buildNumber = 37
 
 func main() {
 	runtime.GOMAXPROCS(5)
@@ -19,6 +19,8 @@ func main() {
 	fmt.Println(" | |__| (_) | (_) |   <| |  __/ |_) | (_) | |_ ")
 	fmt.Println("  \\____\\___/ \\___/|_|\\_\\_|\\___|____/ \\___/ \\__| build", buildNumber)
 	fmt.Println("")
+
+	InitializeCommands()
 
 	log.Println("Initializing bot manager...")
 	botManager := new(BotManager)

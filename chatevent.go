@@ -27,7 +27,7 @@ func HandleEid_RecvWhisper(bot *Bot, username string, flags int, ping int, text 
 
 func HandleEid_UserTalk(bot *Bot, username string, flags int, ping int, text string) {
 	if strings.HasPrefix(text, bot.Config.Trigger) {
-		CommandHandler(bot, text)
+		CommandHandler(bot, username, text)
 	}
 }
 

@@ -130,6 +130,16 @@ func SendSid_JoinChannel(bot *Bot, channel string) {
 	}
 }
 
+func SendSid_ChatCommand(bot *Bot, text string) {
+	bncs := NewBncsPacket(nil)
+	bncs.WriteString(text)
+	
+	err := bncs.SendPacket(bot.Bncs.conn, 0x0e)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
+}
+
 func handleSid_Auth_Info(bot *Bot, bncs *BncsPacket) {
 	logonType := bncs.ReadDword()
 	serverToken := bncs.ReadDword()

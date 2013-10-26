@@ -66,7 +66,7 @@ func (userList *UserList) FindUsers(pattern string) []*User {
 
 	for u := userList.Users.Front(); u != nil; u = u.Next() {
 		user := u.Value.(*User)
-		if WildcardCompare(pattern, user.Name) {
+		if WildcardCompare(user.Name, pattern) {
 			users = append(users, user)
 		}
 	}
